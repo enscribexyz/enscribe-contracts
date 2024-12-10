@@ -1,8 +1,8 @@
 //SPDX-License-Identifier: MIT
-pragma solidity >=0.8.17 <0.9.0;
+pragma solidity =0.8.24;
 
-import {ENS} from "../registry/ENS.sol";
-import {IReverseRegistrar} from "../reverseRegistrar/IReverseRegistrar.sol";
+import {ENS} from "./ENS.sol";
+import {IReverseRegistrar} from "./IReverseRegistrar.sol";
 
 contract ReverseClaimer {
     bytes32 constant ADDR_REVERSE_NODE =

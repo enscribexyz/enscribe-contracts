@@ -1,0 +1,9 @@
+{
+    "name": "Web3App",
+    "description": " ",
+    "repository": " ",
+    "license": "UNLICENSED",
+    "dependencies": {
+        "@openzeppelin/contracts": "4.9.6"
+    }
+}
