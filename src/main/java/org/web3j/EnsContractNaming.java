@@ -22,8 +22,8 @@ import java.util.Arrays;
 import java.util.List;
 
 public class EnsContractNaming {
-    private static final String infuraSepolia = "";
-    private static final String infuraMainnet = "";
+    private static final String infuraSepolia = "https://sepolia.infura.io/v3/fe0e00048b004f69be5a9ac90298d0ca";
+    private static final String infuraMainnet = "https://mainnet.infura.io/v3/fe0e00048b004f69be5a9ac90298d0ca";
 
     public static final Event TRANSFER_SINGLE_EVENT = new Event(
             "TransferSingle",
@@ -70,6 +70,9 @@ public class EnsContractNaming {
 
         TransactionReceipt receiptTransfer = nameWrapper.safeTransferFrom(credentials.getAddress(), deployAddress, id, BigInteger.ONE, null).send();
         System.out.println(receiptTransfer);
+
+        TransactionReceipt receiptDeployContrat = create2Factory.deploy(salt, helloWorldByteCode.getBytes()).send();
+        System.out.println(receiptDeployContrat);
 
         String subname = "";
         TransactionReceipt receiptSetPrimaryName = reverseRegistrar.setNameForAddr(deployAddress, credentials.getAddress(), resolver, subname).send();
