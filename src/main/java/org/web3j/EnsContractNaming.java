@@ -16,13 +16,17 @@ import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.gas.DefaultGasProvider;
+import org.web3j.tx.gas.StaticGasProvider;
+import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.web3j.Web3LabsContractDeployer.getEnvVariable;
+
 public class EnsContractNaming {
-    private static final String infuraSepolia = "";
+    private static final String infuraSepolia = getEnvVariable("RPC_URL");
     public static final Event TRANSFER_SINGLE_EVENT = new Event(
             "TransferSingle",
             Arrays.asList(
@@ -35,15 +39,13 @@ public class EnsContractNaming {
     );
 
     private static final Web3j web3j = Web3j.build(new HttpService(infuraSepolia));
-    private static final Credentials credentials = Credentials.create("");
-    private static final NameWrapper nameWrapper = NameWrapper.load("0x0635513f179D50A207757E05759CbD106d7dFcE8", web3j, credentials, new DefaultGasProvider());
-    private static final Web3LabsContract web3LabsContract = Web3LabsContract.load("", web3j, credentials, new DefaultGasProvider());
+    private static final Credentials credentials = Credentials.create(getEnvVariable("PRIVATE_KEY"));
+    private static final NameWrapper nameWrapper = NameWrapper.load("0x0635513f179D50A207757E05759CbD106d7dFcE8", web3j, credentials, new StaticGasProvider(BigInteger.valueOf(10_100_000_000L), BigInteger.valueOf(9_000_000)));
+    private static final Web3LabsContract web3LabsContract = Web3LabsContract.load("0x3fb589e1dd2b51cee708a4b490f392a2f8afc121", web3j, credentials, new DefaultGasProvider());
     private static final ReverseRegistrar reverseRegistrar = ReverseRegistrar.load("0xCF75B92126B02C9811d8c632144288a3eb84afC8", web3j, credentials, new DefaultGasProvider());
     private static final String parentEnsName = "web3labs.eth";
 
     public static void main(String[] args) throws Exception {
-
-
 
         // Set Contract Bytecode, Salt, and subname label
         byte[] helloWorldByteCode = HelloWorld.BINARY.getBytes();
@@ -76,7 +78,7 @@ public class EnsContractNaming {
 
     static String getComputeAddress(BigInteger salt, byte[] helloWorldByteCode) throws Exception {
         String deployAddress = web3LabsContract.computeAddress(salt, helloWorldByteCode).send();
-        System.out.println(deployAddress);
+        System.out.println("Computed Deploy Address = " + deployAddress);
         return deployAddress;
     }
 
@@ -85,7 +87,8 @@ public class EnsContractNaming {
         BigInteger ttl = BigInteger.ZERO;
         BigInteger fuses = BigInteger.valueOf(4);
         BigInteger expiry = BigInteger.ZERO;
-        byte[] parentNode = NameHash.nameHash(parentEnsName).getBytes();
+        byte[] parentNode = Numeric.hexStringToByteArray(NameHash.nameHash(parentEnsName));
+        System.out.println("Name hash calculated = " + NameHash.nameHash(parentEnsName));
 
         TransactionReceipt receiptSubnodeRecord = nameWrapper.setSubnodeRecord(parentNode, label, credentials.getAddress(), resolver, ttl, fuses, expiry).send();
         System.out.println(receiptSubnodeRecord);
