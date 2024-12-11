@@ -2,6 +2,7 @@ package org.web3j;
 
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
+import org.web3j.generated.contracts.Web3LabsContract;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.gas.DefaultGasProvider;
@@ -14,18 +15,14 @@ import org.web3j.generated.contracts.HelloWorld;
  * <p>For more information on how to run this project, please refer to our <a href="https://docs.web3j.io/latest/command_line_tools/#running-your-application">documentation</a></p>
  */
 public class Web3App {
-
-   private static final String nodeUrl = System.getenv().getOrDefault("WEB3J_NODE_URL", "<node_url>");
-   private static final String walletPassword = System.getenv().getOrDefault("WEB3J_WALLET_PASSWORD", "<wallet_password>");
-   private static final String walletPath = System.getenv().getOrDefault("WEB3J_WALLET_PATH", "<wallet_path>");
+   private static final String infuraSepolia = "";
 
    public static void main(String[] args) throws Exception {
-        Credentials credentials = WalletUtils.loadCredentials(walletPassword, walletPath);
-        Web3j web3j = Web3j.build(new HttpService(nodeUrl));
-        System.out.println("Deploying HelloWorld contract ...");
-        HelloWorld helloWorld = HelloWorld.deploy(web3j, credentials, new DefaultGasProvider(), "Hello Blockchain World!").send();
-        System.out.println("Contract address: " + helloWorld.getContractAddress());
-        System.out.println("Greeting method result: " + helloWorld.greeting().send());
+        Credentials credentials = Credentials.create("");
+        Web3j web3j = Web3j.build(new HttpService(infuraSepolia));
+        System.out.println("Deploying Web3 Labs contract ...");
+        Web3LabsContract web3LabsContract = Web3LabsContract.deploy(web3j, credentials, new DefaultGasProvider()).send();
+        System.out.println("Contract address: " + web3LabsContract.getContractAddress());
        }
 }
 

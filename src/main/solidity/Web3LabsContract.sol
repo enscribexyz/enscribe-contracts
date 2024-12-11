@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.24;
 
-contract Create2Factory {
+import "./ReverseRegistrar.sol";
+
+contract Web3LabsContract {
+
+    address public reverseRegistrar = 0xCF75B92126B02C9811d8c632144288a3eb84afC8;
+
     event ContractDeployed(address contractAddress);
+
+    function setReverseRegistrar(address _reverseRegistrar) public {
+        reverseRegistrar = _reverseRegistrar;
+    }
 
     /**
      * @notice Deploy a new contract using CREATE2
@@ -39,5 +48,10 @@ contract Create2Factory {
                 bytecodeHash
             ))))
         );
+    }
+
+    function setPrimaryNameForContract(address contractAddr, address owner, address resolver, string calldata subName) public {
+        ReverseRegistrar reverseRegistrar = ReverseRegistrar(reverseRegistrar);
+        reverseRegistrar.setNameForAddr(contractAddr, owner, resolver, subName);
     }
 }
