@@ -49,7 +49,7 @@ public class Web3LabsContractDeployer {
                     envVariables.put(parts[0].trim(), parts[1].trim());
                 }
             }
-            // Get private key
+            // Get key
             return envVariables.get(key);
         } catch (Exception e) {
             throw new RuntimeException("Env Key not found in .env File - " + e);
