@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.0;
+pragma solidity =0.8.24;
 
-import "./Ownable.sol";
+import "./openzeppelin/access/Ownable.sol";
 
 contract HelloWorld is Ownable {
     string greetings = "default";

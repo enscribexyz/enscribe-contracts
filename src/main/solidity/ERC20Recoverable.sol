@@ -1,8 +1,8 @@
 //SPDX-License-Identifier: MIT
 pragma solidity =0.8.24;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./Ownable.sol";
+import "./openzeppelin/token/ERC20/IERC20.sol";
+import "./openzeppelin/access/Ownable.sol";
 
 /**
     @notice Contract is used to recover ERC20 tokens sent to the contract by mistake.

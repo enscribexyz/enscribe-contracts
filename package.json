@@ -4,6 +4,7 @@
     "repository": " ",
     "license": "UNLICENSED",
     "dependencies": {
-        "@openzeppelin/contracts": "4.9.6"
+        "@openzeppelin/contracts": "4.9.6",
+        "@ensdomains/ens-contracts": "1.2.2"
     }
 }

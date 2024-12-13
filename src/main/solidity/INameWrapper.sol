@@ -3,7 +3,7 @@ pragma solidity =0.8.24;
 
 import "./ENS.sol";
 import "./IBaseRegistrar.sol";
-import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "./openzeppelin/token/ERC1155/IERC1155.sol";
 import "./IMetadataService.sol";
 import "./INameWrapperUpgrade.sol";
 

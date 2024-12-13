@@ -22,7 +22,11 @@ repositories {
 
 web3j {
     generatedPackageName = 'org.web3j.generated.contracts'
-    excludedContracts = ['Mortal']
+    includedContracts = ['Web3LabsContract','HelloWorld','ETHRegistrarController', 'NameWrapper']
+}
+
+solidity {
+    evmVersion = 'LONDON'
 }
 
 node {
