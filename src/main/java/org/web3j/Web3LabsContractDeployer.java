@@ -1,34 +1,17 @@
 package org.web3j;
 
-import org.web3j.abi.FunctionReturnDecoder;
-import org.web3j.abi.TypeReference;
-import org.web3j.abi.datatypes.Address;
-import org.web3j.abi.datatypes.Event;
-import org.web3j.abi.datatypes.Type;
-import org.web3j.abi.datatypes.generated.Uint256;
 import org.web3j.crypto.Credentials;
-import org.web3j.ens.EnsResolver;
-import org.web3j.ens.NameHash;
-import org.web3j.generated.contracts.ETHRegistrarController;
-import org.web3j.generated.contracts.NameWrapper;
 import org.web3j.generated.contracts.Web3LabsContract;
 import org.web3j.protocol.Web3j;
-import org.web3j.protocol.core.methods.response.Log;
-import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.protocol.http.HttpService;
-import org.web3j.tx.gas.DefaultGasProvider;
 import org.web3j.tx.gas.StaticGasProvider;
-import org.web3j.utils.Numeric;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.math.BigInteger;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -85,37 +68,5 @@ public class Web3LabsContractDeployer {
         }
    }
 
-//    static final ETHRegistrarController ethRegistrarController = ETHRegistrarController.load("0xa9283239537a72f172a99ca9ed85c12cc8458b29", web3j, credentials, new StaticGasProvider(gasPrice, gasLimit));
-//    static final NameWrapper nameWrapper = NameWrapper.load("0x50dA5fd0fc8233a25FF87Fd5339cFCE930785f07", web3j, credentials, new StaticGasProvider(gasPrice, gasLimit));
-//        String label = "testing";
-//        String parentName = "testing.eth";
-//       byte[] commitment = ethRegistrarController.makeCommitment(label, credentials.getAddress(), BigInteger.valueOf(31536000),
-//               Numeric.hexStringToByteArray("0x8afb221c262ffdde4da3c7dbedbf4768fb1da38505129c5cf51224e56af6fdc1"),
-//               "0x4c46a5b0db2e97d9dae693fede8b2050f5afdc91", Collections.emptyList(), false, BigInteger.ZERO).send();
-//
-//       ethRegistrarController.commit(commitment).send();
-//
-//       Thread.sleep(60000);
-//       TransactionReceipt receipt = ethRegistrarController.register(label, credentials.getAddress(), BigInteger.valueOf(31536000),
-//               Numeric.hexStringToByteArray("0x8afb221c262ffdde4da3c7dbedbf4768fb1da38505129c5cf51224e56af6fdc1"),
-//               "0x4c46a5b0db2e97d9dae693fede8b2050f5afdc91", Collections.emptyList(), false, BigInteger.ZERO, BigInteger.valueOf(3187500000003559L)).send();
-//
-//        String nameHashHex = NameHash.nameHash(name); // Example: "0x1234abcd..."
-//        BigInteger tokenId = new BigInteger(nameHashHex.substring(2), 16); // Remove "0x" and parse as base-16
-//
-//        System.out.println("Namehash (hex): " + nameHashHex);
-//        System.out.println("Namehash (decimal): " + tokenId);
-
-//        String subLabel = "v1";
-//
-//        nameWrapper.setSubnodeRecord(NameHash.nameHashAsBytes(parentName), subLabel, credentials.getAddress(), "0x4c46a5b0db2e97d9dae693fede8b2050f5afdc91", BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO).send();
-
-//        String subname = subLabel + "." + parentName;
-//        String nameHashHex = NameHash.nameHash(subname);
-//        BigInteger tokenId = new BigInteger(nameHashHex.substring(2), 16);
-//
-//        nameWrapper.safeTransferFrom(credentials.getAddress(), "0x094cf897a2a79a6208f102774904657b8edf1ca7", tokenId, BigInteger.ONE, new byte[0]).send();
-//       EnsResolver ensResolver = new EnsResolver(web3j);
-//       System.out.println("ENS address = " + ensResolver.resolve("web3labs.eth"));
 }
 

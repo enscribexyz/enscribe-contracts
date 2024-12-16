@@ -7,15 +7,11 @@ RPC_URL=  # Sepolia RPC endpoint
 - Deploy Web3LabsContract by running main function inside Web3LabsContractDeployer if not already deployed
 
 
-- Inside EnsContractNaming Class update web3LabsContractAddress
+- Inside EnsNamed Class update args of any one of the function call you want to run
 
 ```java
-private static final String web3LabsContractAddress = "<Web3LabsContract address>";
+web3LabsDomain(helloWorldByteCode, "v1");
+userDomain(helloWorldByteCode, "v1", "test6.web3labs2.eth");
 ```
-- Inside main function of EnsContractNaming Class update label and salt
 
-```java
-BigInteger salt = BigInteger.valueOf("<rnadom integer>"); // change for every run
-String label = "<any label>"; // change for every run
-```
-- Run the main function of EnsContractNaming
+- Run the main function of EnsNamed
