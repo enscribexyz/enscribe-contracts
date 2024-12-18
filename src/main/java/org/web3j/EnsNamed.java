@@ -16,10 +16,11 @@ import static org.web3j.Web3LabsContractDeployer.gasPrice;
 import static org.web3j.Web3LabsContractDeployer.web3j;
 
 public class EnsNamed {
-    private static final String web3LabsContractAddress = "0x49b66baecd21cc87a8300f70d917617a227b78b8";
+    private static final String web3LabsContractAddress = "0x3e71bC0e1729c111dd3E6aaB923886d0A7FeD437";
     private static final String nameWrapperContractAddress = "0x0635513f179D50A207757E05759CbD106d7dFcE8";
     private static final Web3LabsContract web3LabsContract = Web3LabsContract.load(web3LabsContractAddress, web3j, credentials, new StaticGasProvider(gasPrice, gasLimit));
     private static final NameWrapper nameWrapper = NameWrapper.load(nameWrapperContractAddress, web3j, credentials, new StaticGasProvider(gasPrice, gasLimit));
+    private static final String web3LabsEns = "named.web3labs2.eth";
 
 
     public static void main(String[] args) throws Exception {
@@ -34,16 +35,16 @@ public class EnsNamed {
         web3LabsDomain(helloWorldByteCode, "v1");
 
         // second use case (using their own parent domain)
-        userDomain(helloWorldByteCode, "v1", "test6.web3labs2.eth");
+        userDomain(helloWorldByteCode, "v2", "testfinal2.web3labs2.eth");
 
         // third use case (When contract is already deployed)
-        contractDeployed("", "v1");
+        contractDeployed("0xF28789Dc7bFBAE61221f08196C5aF0016AA8bB62", "v2");
 
 
     }
 
     static void web3LabsDomain(byte[] contractByteCode, String label) throws Exception {
-        final String parent = "named.web3labs2.eth";
+        final String parent = web3LabsEns;
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
         TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode).send();
         System.out.println("receipt = " + receipt);
@@ -59,7 +60,7 @@ public class EnsNamed {
     }
 
     static void contractDeployed(String contractAddress, String label) throws Exception {
-        final String parent = "named.web3labs2.eth";
+        final String parent = web3LabsEns;
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
         TransactionReceipt receipt =  web3LabsContract.setName(contractAddress, label, parent, parentNode).send();
         System.out.println("receipt = " + receipt);
