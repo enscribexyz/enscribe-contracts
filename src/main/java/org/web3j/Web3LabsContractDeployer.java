@@ -3,7 +3,9 @@ package org.web3j;
 import org.web3j.crypto.Credentials;
 import org.web3j.generated.contracts.Web3LabsContract;
 import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.http.HttpService;
+import org.web3j.tx.gas.StaticEIP1559GasProvider;
 import org.web3j.tx.gas.StaticGasProvider;
 
 import java.io.BufferedReader;
@@ -35,9 +37,15 @@ public class Web3LabsContractDeployer {
 
     public static void main(String[] args) throws Exception {
        System.out.println("Deploying Web3 Labs contract ...");
-       Web3LabsContract web3LabsContract = Web3LabsContract.deploy(web3j, credentials, new StaticGasProvider(gasPrice, gasLimit)).send();
+        BigInteger maxPriorityFeePerGas = web3j.ethMaxPriorityFeePerGas().send().getMaxPriorityFeePerGas();
+        BigInteger baseFee =
+                web3j.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
+                        .send()
+                        .getBlock()
+                        .getBaseFeePerGas();
+        BigInteger maxFeePerGas = baseFee.multiply(BigInteger.valueOf(2)).add(maxPriorityFeePerGas);
+       Web3LabsContract web3LabsContract = Web3LabsContract.deploy(web3j, credentials, new StaticEIP1559GasProvider(11155111L, maxFeePerGas, maxPriorityFeePerGas, gasLimit)).send();
        System.out.println("Contract address: " + web3LabsContract.getContractAddress());
-
    }
 
    static String getEnvVariable(String key)  {

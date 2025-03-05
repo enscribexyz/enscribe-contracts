@@ -32,30 +32,28 @@ public class EnsNamed {
         //    Note: Transfer Ownership to our contract and then call setNameAndDeploy
 
         // First use case (using web3Labs domain)
-        web3LabsDomain(helloWorldByteCode, "v1");
+        // web3LabsDomain(helloWorldByteCode, "v4");
 
         // second use case (using their own parent domain)
-        userDomain(helloWorldByteCode, "v2", "testfinal2.web3labs2.eth");
+        // userDomain(helloWorldByteCode, "greeter", "enscribe.eth");
 
         // third use case (When contract is already deployed)
-        contractDeployed("0xF28789Dc7bFBAE61221f08196C5aF0016AA8bB62", "v2");
-
-
+        // contractDeployed("0xF28789Dc7bFBAE61221f08196C5aF0016AA8bB62", "v2");
     }
 
     static void web3LabsDomain(byte[] contractByteCode, String label) throws Exception {
         final String parent = web3LabsEns;
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
-        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode).send();
+        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode, BigInteger.ONE).send();
         System.out.println("receipt = " + receipt);
     }
 
     static void userDomain(byte[] contractByteCode, String label, String parent) throws Exception {
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
-        BigInteger tokenId = new BigInteger(Numeric.toHexString(parentNode).substring(2), 16);
-        TransactionReceipt receiptTransfer = nameWrapper.safeTransferFrom(credentials.getAddress(), web3LabsContractAddress, tokenId, BigInteger.ONE, new byte[0]).send();
-        System.out.println("Transfer parent receipt = " + receiptTransfer);
-        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode).send();
+//        BigInteger tokenId = new BigInteger(Numeric.toHexString(parentNode).substring(2), 16);
+//        TransactionReceipt receiptTransfer = nameWrapper.safeTransferFrom(credentials.getAddress(), web3LabsContractAddress, tokenId, BigInteger.ONE, new byte[0]).send();
+//        System.out.println("Transfer parent receipt = " + receiptTransfer);
+        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode, BigInteger.ONE).send();
         System.out.println("receipt = " + receipt);
     }
 
