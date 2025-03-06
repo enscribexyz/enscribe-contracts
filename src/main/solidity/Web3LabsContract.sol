@@ -3,6 +3,7 @@ pragma solidity =0.8.24;
 
 import "./ReverseRegistrar.sol" as RR;
 import "./NameWrapper.sol" as NW;
+import "./ENSRegistry.sol" as ER;
 import "./PublicResolver.sol" as PR;
 import "./openzeppelin/token/ERC1155/IERC1155Receiver.sol";
 import "./openzeppelin/access/Ownable.sol";
@@ -10,9 +11,10 @@ import "./openzeppelin/access/Ownable.sol";
 contract Web3LabsContract is IERC1155Receiver, Ownable {
 
     address public constant REVERSE_REGISTRAR_ADDRESS = 0xCF75B92126B02C9811d8c632144288a3eb84afC8;
-    address public constant NAME_WRAPPER_ADDRESS = 0x0635513f179D50A207757E05759CbD106d7dFcE8;
+    address public constant ENS_REGISTRY_ADDRESS = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
     address public constant PUBLIC_RESOLVER_ADDRESS = 0x8948458626811dd0c23EB25Cc74291247077cC51;
 
+    event GasLeftStarted(uint256 gasLeftStart);
     event ContractDeployed(address contractAddress);
     event SubnameCreated(bytes32 parentHash, string label);
     event SetAddrSuccess(bytes32 subnameHash, bytes encodedAddress);
@@ -43,6 +45,7 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
     // Function to be called when Deploy contract and set primary ENS name
     function setNameAndDeploy(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
         uint256 gasStart = gasleft(); // Capture initial gas amount
+        emit GasLeftStarted(gasStart);
 
         bytes32 labelHash = keccak256(bytes(label));
         string memory subname = string(abi.encodePacked(label, ".", parentName));
@@ -50,7 +53,7 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
         uint256 salt = uint256(node);
         deployedAddress = computeAddress(salt, bytecode);
 
-        require(_createSubname(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname");
+        require(_createSubname(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname");
         emit SubnameCreated(parentNode, label);
 
         bytes memory encodedAddress = abi.encodePacked(deployedAddress);
@@ -81,7 +84,7 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
         success = false;
         _checkOwnership(contractAddress);
 
-        require(_createSubname(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname");
+        require(_createSubname(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname");
         emit SubnameCreated(parentNode, label);
 
         bytes memory encodedAddress = abi.encodePacked(contractAddress);
@@ -147,15 +150,13 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
 
     function _createSubname(
         bytes32 parentNode,
-        string calldata label,
+        bytes32 labelHash,
         address owner,
         address resolver,
-        uint64 ttl,
-        uint32 fuses,
-        uint64 expiry
+        uint64 ttl
     ) private returns (bool success) {
-        NW.NameWrapper nameWrapper = NW.NameWrapper(NAME_WRAPPER_ADDRESS);
-        try nameWrapper.setSubnodeRecord(parentNode, label, owner, resolver, ttl, fuses, expiry) {
+        ER.ENSRegistry ensRegistry = ER.ENSRegistry(ENS_REGISTRY_ADDRESS);
+        try ensRegistry.setSubnodeRecord(parentNode, labelHash, owner, resolver, ttl) {
             success = true;
         } catch {
             success = false;
