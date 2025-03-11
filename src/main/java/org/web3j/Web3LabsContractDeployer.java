@@ -25,7 +25,7 @@ public class Web3LabsContractDeployer {
     static final String infuraSepolia = getEnvVariable("RPC_URL");
     static final Web3j web3j = Web3j.build(new HttpService(infuraSepolia));
     static final Credentials credentials = Credentials.create(getEnvVariable("PRIVATE_KEY"));
-    static final BigInteger gasLimit = BigInteger.valueOf(10_000_000);
+    static final BigInteger gasLimit = BigInteger.valueOf(2_000_000);
     static final BigInteger gasPrice;
     static {
         try {

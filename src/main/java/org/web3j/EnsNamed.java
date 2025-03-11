@@ -1,7 +1,9 @@
 package org.web3j;
 
+import org.web3j.crypto.Hash;
 import org.web3j.ens.NameHash;
 import org.web3j.ens.contracts.generated.ENSRegistryWithFallbackContract;
+import org.web3j.generated.contracts.BaseRegistrarImplementation;
 import org.web3j.generated.contracts.HelloWorld;
 import org.web3j.generated.contracts.Web3LabsContract;
 import org.web3j.protocol.core.DefaultBlockParameterName;
@@ -10,15 +12,21 @@ import org.web3j.tx.gas.StaticEIP1559GasProvider;
 import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 import static org.web3j.Web3LabsContractDeployer.credentials;
 import static org.web3j.Web3LabsContractDeployer.gasLimit;
 import static org.web3j.Web3LabsContractDeployer.web3j;
+import static org.web3j.ens.NameHash.normalise;
 
 public class EnsNamed {
-    private static final String web3LabsContractAddress = "0x5CEDDD691070082e7106e8d4ECf0896F9D9930D8";
+    private static final byte[] EMPTY = new byte[32];
+    private static final String web3LabsContractAddress = "0xde3f100397cc5d9efec6ae5c6e8b9ade2d5eac97";
     private static final String ensRegistryContractAddress = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e";
+    private static final String baseRegistrarImplementationContractAddress = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85";
     private static final String web3LabsEns = "testapp.eth";
+    private static final BigInteger etherValue = new BigInteger("100000000000000");
 
 
     public static void main(String[] args) throws Exception {
@@ -34,6 +42,7 @@ public class EnsNamed {
 
         Web3LabsContract web3LabsContract = Web3LabsContract.load(web3LabsContractAddress, web3j, credentials, eip1559GasProvider);
         ENSRegistryWithFallbackContract ensRegistry = ENSRegistryWithFallbackContract.load(ensRegistryContractAddress, web3j, credentials, eip1559GasProvider);
+        BaseRegistrarImplementation baseRegistrarImplementation = BaseRegistrarImplementation.load(baseRegistrarImplementationContractAddress, web3j, credentials, eip1559GasProvider);
 
         byte[] helloWorldByteCode = Numeric.hexStringToByteArray("0x" + HelloWorld.BINARY);
 
@@ -42,10 +51,14 @@ public class EnsNamed {
         //    Note: Transfer managership to our contract and then call setNameAndDeploy
 
         // First use case (using web3Labs domain)
-//         web3LabsDomain(helloWorldByteCode, "v2", web3LabsContract);
+        // unwrapped - testapp.eth
+         web3LabsDomain(helloWorldByteCode, "v6", "testapp.eth", web3LabsContract);
+
+         // wrapped - web3labs2.eth
+//        web3LabsDomain(helloWorldByteCode, "v1", "v1.web3labs2.eth", web3LabsContract);
 
         // second use case (using their own parent domain)
-         userDomain(helloWorldByteCode, "v1", "sub.named.eth", web3LabsContract, ensRegistry);
+//         userDomain(helloWorldByteCode, "v1", "named.eth", web3LabsContract, ensRegistry, baseRegistrarImplementation);
 
         // third use case (When contract is already deployed)
 //         contractDeployed("0xF28789Dc7bFBAE61221f08196C5aF0016AA8bB62", "v2", web3LabsContract);
@@ -57,30 +70,55 @@ public class EnsNamed {
 
     }
 
-    static void web3LabsDomain(byte[] contractByteCode, String label, Web3LabsContract web3LabsContract) throws Exception {
-        final String parent = web3LabsEns;
+    static void web3LabsDomain(byte[] contractByteCode, String label, String parent, Web3LabsContract web3LabsContract) throws Exception {
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
-        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode, new BigInteger("100000000000000")).send();
+        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode, etherValue).send();
         System.out.println("receipt = " + receipt);
     }
 
-    static void userDomain(byte[] contractByteCode, String label, String parent, Web3LabsContract web3LabsContract, ENSRegistryWithFallbackContract ensRegistry) throws Exception {
+    static void userDomain(byte[] contractByteCode, String label, String parent, Web3LabsContract web3LabsContract, ENSRegistryWithFallbackContract ensRegistry, BaseRegistrarImplementation baseRegistrarImplementation) throws Exception {
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
-        // check for current manager
+        // check for current manager ENS Registry owner
         if(!ensRegistry.owner(parentNode).send().equalsIgnoreCase(web3LabsContractAddress)) {
-            TransactionReceipt receiptChangeManager = ensRegistry.setOwner(parentNode, web3LabsContractAddress).send();
-            System.out.println("Manager parent receipt = " + receiptChangeManager);
+            // 3LD to give manager access call setOwner in ENS registry
+            // 2LD to give manager access call reclaim(uint256 id, address owner) on ENS BaseRegistrarImplementation\
+
+            if(parent.chars().filter(ch -> ch == '.').count() == 1L) {
+                byte[] labelHash = labelHashAsBytes(parent);
+                BigInteger tokenId = new BigInteger(Numeric.toHexString(labelHash).substring(2), 16);
+
+                TransactionReceipt receiptChangeManager = baseRegistrarImplementation.reclaim(tokenId, web3LabsContractAddress).send();
+                System.out.println("2LD Manager parent receipt = " + receiptChangeManager);
+            }
+            else {
+                TransactionReceipt receiptChangeManager = ensRegistry.setOwner(parentNode, web3LabsContractAddress).send();
+                System.out.println("3LD Manager parent receipt = " + receiptChangeManager);
+            }
+
             // 3LD parent can get back using setSubnodeOwner(bytes32 node,bytes32 label,address owner) on ENS registry
             // 2LD parent can get back using reclaim(uint256 id, address owner) on ENS BaseRegistrarImplementation, id is tokenID
         }
-        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode, new BigInteger("100000000000000")).send();
+        TransactionReceipt receipt =  web3LabsContract.setNameAndDeploy(contractByteCode, label, parent, parentNode, etherValue).send();
         System.out.println("receipt = " + receipt);
     }
 
     static void contractDeployed(String contractAddress, String label, Web3LabsContract web3LabsContract) throws Exception {
         final String parent = web3LabsEns;
         final byte[] parentNode = NameHash.nameHashAsBytes(parent);
-        TransactionReceipt receipt =  web3LabsContract.setName(contractAddress, label, parent, parentNode).send();
+        TransactionReceipt receipt =  web3LabsContract.setName(contractAddress, label, parent, parentNode, etherValue).send();
         System.out.println("receipt = " + receipt);
+    }
+
+    public static String labelHash(String ensName) {
+        if (ensName.isEmpty()) {
+            return Numeric.toHexString(EMPTY);
+        } else {
+            String normalisedEnsName = normalise(ensName);
+            return Numeric.toHexString(Hash.sha3(normalisedEnsName.split("\\.")[0].getBytes(StandardCharsets.UTF_8)));
+        }
+    }
+
+    public static byte[] labelHashAsBytes(String ensName) {
+        return Numeric.hexStringToByteArray(labelHash(ensName));
     }
 }
