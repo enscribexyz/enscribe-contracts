@@ -9,7 +9,7 @@ import "./BaseRegistrarImplementation.sol" as BR;
 import "./openzeppelin/token/ERC1155/IERC1155Receiver.sol";
 import "./openzeppelin/access/Ownable.sol";
 
-contract Web3LabsContract is IERC1155Receiver, Ownable {
+contract EnscribeSepolia is IERC1155Receiver, Ownable {
 
     address public constant REVERSE_REGISTRAR_ADDRESS = 0xCF75B92126B02C9811d8c632144288a3eb84afC8;
     address public constant ENS_REGISTRY_ADDRESS = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
@@ -18,13 +18,14 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
     address public constant BASE_REGISTRAR_ADDRESS = 0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85;
 
     uint256 public pricing = 0.0001 ether;
+    string public defaultParent = "testapp.eth";
 
     event ContractStarted(string parentName, bytes32 parentNode, uint256 tokenID);
     event IsWrapped(string msg, uint256 tokenId);
     event ContractDeployed(address contractAddress);
     event SubnameCreated(bytes32 parentHash, string label);
-    event SetAddrSuccess(bytes32 subnameHash, bytes encodedAddress);
-    event SetPrimaryNameSuccess(address deployedAddress, string subname);
+    event SetAddrSuccess(address indexed contractAddress, string subname);
+    event SetPrimaryNameSuccess(address indexed deployedAddress, string subname);
     event ContractOwnershipTransferred(address deployedAddress, address owner);
     event NameOwnershipTransferred(uint256 parentTokenId, address owner);
     event EtherReceived(address sender, uint256 amount);
@@ -57,22 +58,9 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
         uint256 salt = uint256(node);
         deployedAddress = computeAddress(salt, bytecode);
 
-        if (checkWrapped(parentNode)) {
-            emit IsWrapped("Wrapped", uint256(parentNode));
-            require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of parent node, can't create subname");
-            require(_createSubnameWrapped(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role");
-        } else {
-            emit IsWrapped("Unwrapped", uint256(parentNode));
-            require(_isSenderOwnerUnwrapped(parentNode, parentName), "Sender is not the owner of parent node, can't create subname");
-            require(_createSubnameUnwrapped(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role (3LD+) or manager role (2LD+)");
-        }
-        emit SubnameCreated(parentNode, label);
-
-        bytes memory encodedAddress = abi.encodePacked(deployedAddress);
-        require(_setAddr(node, uint256(60), encodedAddress), "failed to setAddr");
-        emit SetAddrSuccess(node, encodedAddress);
-
         _deploy(salt, bytecode);
+
+        require(setName(deployedAddress, label, parentName, parentNode), "Failed to create subname and set forward resolution");
 
         require(_setPrimaryNameForContract(deployedAddress, address(this), PUBLIC_RESOLVER_ADDRESS, subname), "failed to set primary name");
         emit SetPrimaryNameSuccess(deployedAddress, subname);
@@ -84,32 +72,29 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
         emit EtherReceived(msg.sender, msg.value);
     }
 
-    // Function to be called when contract is already deployed and just set primary ENS name
+    // Function to be called when contract is already deployed and just set forward resolve ENS name
     function setName(address contractAddress, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (bool success) {
         bytes32 labelHash = keccak256(bytes(label));
-        string memory subname = string(abi.encodePacked(label, ".", parentName));
         bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
+        string memory subname = string(abi.encodePacked(label, ".", parentName));
         success = false;
-        _checkOwnership(contractAddress);
 
         if (checkWrapped(parentNode)) {
-            require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of parent node, can't create subname");
+            if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
+                require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of parent node, can't create subname");
+            }
             require(_createSubnameWrapped(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role");
         } else {
-            require(_isSenderOwnerUnwrapped(parentNode, parentName), "Sender is not the owner of parent node, can't create subname");
+            if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
+                require(_isSenderOwnerUnwrapped(parentNode, parentName), "Sender is not the owner of parent node, can't create subname");
+            }
             require(_createSubnameUnwrapped(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role (3LD+) or manager role (2LD+)");
         }
         emit SubnameCreated(parentNode, label);
 
         bytes memory encodedAddress = abi.encodePacked(contractAddress);
         require(_setAddr(node, uint256(60), encodedAddress), "failed to setAddr");
-        emit SetAddrSuccess(node, encodedAddress);
-
-        require(_setPrimaryNameForContract(contractAddress, address(this), PUBLIC_RESOLVER_ADDRESS, subname), "failed to set primary name");
-        emit SetPrimaryNameSuccess(contractAddress, subname);
-
-        _transferContractOwnership(contractAddress, msg.sender);
-        emit ContractOwnershipTransferred(contractAddress, msg.sender);
+        emit SetAddrSuccess(contractAddress, subname);
 
         require(msg.value >= pricing, "Insufficient Ether Sent: Check the pricing");
         emit EtherReceived(msg.sender, msg.value);
@@ -208,20 +193,6 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
         }
     }
 
-    function _checkOwnership(address contractAddress) private {
-        (bool success, bytes memory data) = contractAddress.call(
-            abi.encodeWithSignature("owner()")
-        );
-        require(success, "Failed to call owner() function");
-
-        address owner;
-        if (data.length > 0) {
-            owner = abi.decode(data, (address));
-        }
-
-        require(owner == address(this), "Web3LabsContract is not set as an owner, can't proceed");
-    }
-
     function checkWrapped(bytes32 parentNode) public view returns (bool) {
         NW.NameWrapper nameWrapper = NW.NameWrapper(NAME_WRAPPER_ADDRESS);
         try nameWrapper.isWrapped(parentNode) returns (bool wrapped) {
@@ -276,6 +247,10 @@ contract Web3LabsContract is IERC1155Receiver, Ownable {
     function updatePricing(uint256 updatedPrice) public onlyOwner {
         require(updatedPrice > 0, "Price must be greater than zero");
         pricing = updatedPrice;
+    }
+
+    function updateDefaultParent(string calldata updatedParent) public onlyOwner {
+        defaultParent = updatedParent;
     }
 
     /**
