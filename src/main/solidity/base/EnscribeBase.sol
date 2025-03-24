@@ -1,0 +1,252 @@
+// SPDX-License-Identifier: MIT
+pragma solidity =0.8.24;
+
+import "./ReverseRegistrar.sol" as RR;
+import "./Registry.sol" as ER;
+import "./L2Resolver.sol" as L2R;
+import "./BaseRegistrar.sol" as BR;
+import "../openzeppelin/token/ERC1155/IERC1155Receiver.sol";
+import "../openzeppelin/access/Ownable.sol";
+
+contract EnscribeBase is IERC1155Receiver, Ownable {
+
+    address public constant REVERSE_REGISTRAR_ADDRESS = 0xa0A8401ECF248a9375a0a71C4dedc263dA18dCd7;
+    address public constant ENS_REGISTRY_ADDRESS = 0x1493b2567056c2181630115660963E13A8E32735;
+    address public constant L2_RESOLVER_ADDRESS = 0x6533C94869D28fAA8dF77cc63f9e2b2D6Cf77eBA;
+    address public constant BASE_REGISTRAR_ADDRESS = 0xA0c70ec36c010B55E3C434D6c6EbEEC50c705794;
+
+    uint256 public pricing = 0.0001 ether;
+    string public defaultParent = "test.enscribe.basetest.eth";
+
+    event ContractStarted(string parentName, bytes32 parentNode, uint256 tokenID);
+    event ContractDeployed(address contractAddress);
+    event SubnameCreated(bytes32 parentHash, string label);
+    event SetAddrSuccess(address indexed contractAddress, string subname);
+    event SetPrimaryNameSuccess(address indexed deployedAddress, string subname);
+    event ContractOwnershipTransferred(address deployedAddress, address owner);
+    event EtherReceived(address sender, uint256 amount);
+
+    /**
+     * @notice Compute the address of a contract deployed via CREATE2
+     * @param salt A user-defined value to influence the deterministic address
+     * @param bytecode The bytecode of the contract to deploy
+     * @return computedAddress The deterministic address of the contract
+     */
+    function computeAddress(uint256 salt, bytes memory bytecode) public view returns (address computedAddress) {
+        bytes32 bytecodeHash = keccak256(bytecode);
+        bytes32 saltEncoded = keccak256(abi.encodePacked(salt));
+        computedAddress = address(
+            uint160(uint256(keccak256(abi.encodePacked(
+                bytes1(0xff),
+                address(this),
+                saltEncoded,
+                bytecodeHash
+            ))))
+        );
+    }
+
+    // Function to be called when Deploy contract and set primary ENS name
+    function setNameAndDeploy(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
+        emit ContractStarted(parentName, parentNode, uint256(parentNode));
+        bytes32 labelHash = keccak256(bytes(label));
+        string memory subname = string(abi.encodePacked(label, ".", parentName));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
+        uint256 salt = uint256(node);
+        deployedAddress = computeAddress(salt, bytecode);
+
+        _deploy(salt, bytecode);
+
+        require(setName(deployedAddress, label, parentName, parentNode), "Failed to create subname and set forward resolution");
+
+        require(_setPrimaryNameForContract(deployedAddress, address(this), L2_RESOLVER_ADDRESS, subname), "failed to set primary name");
+        emit SetPrimaryNameSuccess(deployedAddress, subname);
+
+        _transferContractOwnership(deployedAddress, msg.sender);
+        emit ContractOwnershipTransferred(deployedAddress, msg.sender);
+
+        require(msg.value >= pricing, "Insufficient Ether Sent: Check the pricing");
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    // Function to be called when contract is already deployed and just set forward resolve ENS name
+    function setName(address contractAddress, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (bool success) {
+        bytes32 labelHash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
+        string memory subname = string(abi.encodePacked(label, ".", parentName));
+        success = false;
+        if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
+            require(_isSenderOwnerUnwrapped(parentNode, parentName), "Sender is not the owner of parent node, can't create subname");
+        }
+            require(_createSubnameUnwrapped(parentNode, labelHash, address(this), L2_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role (3LD+) or manager role (2LD+)");
+
+        emit SubnameCreated(parentNode, label);
+
+        require(_setAddr(node, contractAddress), "failed to setAddr");
+        emit SetAddrSuccess(contractAddress, subname);
+
+        require(msg.value >= pricing, "Insufficient Ether Sent: Check the pricing");
+        emit EtherReceived(msg.sender, msg.value);
+
+        success = true;
+    }
+
+    /**
+     * @dev To withdraw received Ether.
+     */
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    /**
+     * @dev Fallback function to accept Ether.
+     */
+    receive() external payable {
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Fallback function to accept calls without data.
+     */
+    fallback() external payable {
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    function _deploy(uint256 salt, bytes memory bytecode) private returns (address deployedAddress) {
+        require(bytecode.length != 0, "Bytecode cannot be empty");
+        bytes32 saltEncoded = keccak256(abi.encodePacked(salt));
+        assembly {
+            deployedAddress := create2(0, add(bytecode, 0x20), mload(bytecode), saltEncoded)
+        }
+
+        require(deployedAddress != address(0), "Contract deployment failed");
+        emit ContractDeployed(deployedAddress);
+    }
+
+    function _transferContractOwnership(address contractAddress, address owner) private {
+        (bool success, ) = contractAddress.call(
+            abi.encodeWithSignature("transferOwnership(address)", owner)
+        );
+        require(success, "Ownership transfer failed");
+    }
+
+    function _setPrimaryNameForContract(address contractAddr, address owner, address resolver, string memory subName) private returns (bool success) {
+        RR.ReverseRegistrar reverseRegistrar = RR.ReverseRegistrar(REVERSE_REGISTRAR_ADDRESS);
+        try reverseRegistrar.setNameForAddr(contractAddr, owner, resolver, subName) {
+            success = true;
+        } catch {
+            success = false;
+        }
+    }
+
+    function _createSubnameUnwrapped(
+        bytes32 parentNode,
+        bytes32 labelHash,
+        address owner,
+        address resolver,
+        uint64 ttl
+    ) private returns (bool success) {
+        ER.Registry ensRegistry = ER.Registry(ENS_REGISTRY_ADDRESS);
+        try ensRegistry.setSubnodeRecord(parentNode, labelHash, owner, resolver, ttl) {
+            success = true;
+        } catch {
+            success = false;
+        }
+    }
+
+    function _setAddr(
+        bytes32 node, address a
+    ) private returns (bool success) {
+        L2R.L2Resolver l2ResolverContract = L2R.L2Resolver(L2_RESOLVER_ADDRESS);
+        try l2ResolverContract.setAddr(node, a) {
+            success = true;
+        } catch {
+            success=false;
+        }
+    }
+
+    function _isSenderOwnerUnwrapped(bytes32 parentNode, string calldata parentName) private view returns (bool) {
+        (bool is2LD, bytes32 labelHash) = _is2LDor3LD(parentName);
+        if (is2LD) {
+            return BR.BaseRegistrar(BASE_REGISTRAR_ADDRESS).ownerOf(uint256(labelHash)) == msg.sender;
+        }
+        return ER.Registry(ENS_REGISTRY_ADDRESS).owner(parentNode) == msg.sender;
+    }
+
+    function _is2LDor3LD(string memory ensName) private pure returns (bool is2LD, bytes32 labelHash) {
+        bytes memory strBytes = bytes(ensName);
+        uint256 dotCount = 0;
+        uint256 firstDotIndex = 0;
+
+        // Scan the string to count dots and locate the first dot
+        for (uint256 i = 0; i < strBytes.length; i++) {
+            if (strBytes[i] == ".") {
+                dotCount++;
+                if (dotCount == 1) {
+                    firstDotIndex = i;
+                }
+                if (dotCount > 1) {
+                    return (false, bytes32(0)); // It's a 3LD+, return false and empty labelHash
+                }
+            }
+        }
+
+        // If there's exactly one dot, it's a 2LD, extract label
+        if (dotCount == 1) {
+            bytes memory labelBytes = new bytes(firstDotIndex);
+            for (uint256 i = 0; i < firstDotIndex; i++) {
+                labelBytes[i] = strBytes[i];
+            }
+            return (true, keccak256(labelBytes)); // Return true + labelHash
+        }
+
+        return (false, bytes32(0));
+    }
+
+    function updatePricing(uint256 updatedPrice) public onlyOwner {
+        require(updatedPrice > 0, "Price must be greater than zero");
+        pricing = updatedPrice;
+    }
+
+    function updateDefaultParent(string calldata updatedParent) public onlyOwner {
+        defaultParent = updatedParent;
+    }
+
+    /**
+     * @dev Handles the receipt of a single ERC1155 token type.
+     * This function is called at the end of a `safeTransferFrom` after the balance has been updated.
+     * @return bytes4 Returns `IERC1155Receiver.onERC1155Received.selector` if the transfer is allowed.
+     */
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes calldata data
+    ) external pure override returns (bytes4) {
+        // Accept the transfer
+        return IERC1155Receiver.onERC1155Received.selector;
+    }
+
+    /**
+     * @dev Handles the receipt of multiple ERC1155 token types.
+     * This function is called at the end of a `safeBatchTransferFrom` after the balances have been updated.
+     * @return bytes4 Returns `IERC1155Receiver.onERC1155BatchReceived.selector` if the transfer is allowed.
+     */
+    function onERC1155BatchReceived(
+        address operator,
+        address from,
+        uint256[] calldata ids,
+        uint256[] calldata values,
+        bytes calldata data
+    ) external pure override returns (bytes4) {
+        // Accept the transfer
+        return IERC1155Receiver.onERC1155BatchReceived.selector;
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
+        return interfaceId == type(IERC1155Receiver).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+}

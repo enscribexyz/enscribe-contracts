@@ -22,7 +22,7 @@ repositories {
 
 web3j {
     generatedPackageName = 'org.web3j.generated.contracts'
-    includedContracts = ['EnscribeSepolia', 'EnscribeLineaSepolia', 'HelloWorld', 'ETHRegistrarController', 'BaseRegistrarImplementation']
+    includedContracts = ['EnscribeSepolia', 'EnscribeLineaSepolia', 'EnscribeBase', 'HelloWorld', 'ETHRegistrarController', 'BaseRegistrarImplementation']
 }
 
 solidity {
