@@ -3,7 +3,7 @@ pragma solidity =0.8.24;
 import "./ENS.sol";
 import "./IReverseRegistrar.sol";
 import "./Controllable.sol";
-import "./openzeppelin/access/Ownable.sol";
+import "../openzeppelin/access/Ownable.sol";
 
 abstract contract NameResolver {
     function setName(bytes32 node, string memory name) public virtual;

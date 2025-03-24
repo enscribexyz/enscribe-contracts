@@ -3,7 +3,7 @@ pragma solidity =0.8.24;
 
 import "./ENS.sol";
 import "./IBaseRegistrar.sol";
-import "./openzeppelin/token/ERC721/IERC721.sol";
+import "../openzeppelin/token/ERC721/IERC721.sol";
 
 interface IBaseRegistrar is IERC721 {
     event ControllerAdded(address indexed controller);

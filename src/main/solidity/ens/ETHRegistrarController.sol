@@ -9,9 +9,9 @@ import {ReverseRegistrar} from "./ReverseRegistrar.sol";
 import {ReverseClaimer} from "./ReverseClaimer.sol";
 import {IETHRegistrarController, IPriceOracle} from "./IETHRegistrarController.sol";
 
-import {Ownable} from "./openzeppelin/access/Ownable.sol";
-import {IERC165} from "./openzeppelin/utils/introspection/IERC165.sol";
-import {Address} from "./openzeppelin/utils/Address.sol";
+import {Ownable} from "../openzeppelin/access/Ownable.sol";
+import {IERC165} from "../openzeppelin/utils/introspection/IERC165.sol";
+import {Address} from "../openzeppelin/utils/Address.sol";
 import {INameWrapper} from "./INameWrapper.sol";
 import {ERC20Recoverable} from "./ERC20Recoverable.sol";
 

@@ -2,8 +2,8 @@ pragma solidity =0.8.24;
 
 import "./ENS.sol";
 import "./IBaseRegistrar.sol";
-import "./openzeppelin/token/ERC721/ERC721.sol";
-import "./openzeppelin/access/Ownable.sol";
+import "../openzeppelin/token/ERC721/ERC721.sol";
+import "../openzeppelin/access/Ownable.sol";
 
 contract BaseRegistrarImplementation is ERC721, IBaseRegistrar, Ownable {
     // A map of expiry times
