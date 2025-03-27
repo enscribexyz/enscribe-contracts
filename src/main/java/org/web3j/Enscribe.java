@@ -21,7 +21,7 @@ import static org.web3j.ens.NameHash.normalise;
 
 public class Enscribe {
     private static final byte[] EMPTY = new byte[32];
-    private static final String enscribeContractAddress = "0x77e78294f0b8cb54708393f6d7fa79ef7cfb589c";
+    private static final String enscribeContractAddress = "0xe480db220661Ae181F122d2544683e405006c2eD";
     private static final String ensRegistryContractAddress = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e";
     private static final String baseRegistrarImplementationContractAddress = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85";
     private static final String web3LabsEns = "testapp.eth";

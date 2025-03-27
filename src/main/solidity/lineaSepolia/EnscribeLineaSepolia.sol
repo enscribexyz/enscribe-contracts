@@ -5,17 +5,15 @@ import "../ens/ReverseRegistrar.sol" as RR;
 import "../ens/NameWrapper.sol" as NW;
 import "../ens/ENSRegistry.sol" as ER;
 import "../ens/PublicResolver.sol" as PR;
-import "../ens/BaseRegistrarImplementation.sol" as BR;
 import "../openzeppelin/token/ERC1155/IERC1155Receiver.sol";
 import "../openzeppelin/access/Ownable.sol";
 
-contract EnscribeLineaSepolia is IERC1155Receiver, Ownable {
+contract EnscribeLineaSepolia is Ownable, IERC1155Receiver {
 
     address public constant REVERSE_REGISTRAR_ADDRESS = 0x4aAA964D8EB65508ca3DA3b0A3C060c16059E613;
     address public constant ENS_REGISTRY_ADDRESS = 0x5B2636F0f2137B4aE722C01dd5122D7d3e9541f7;
     address public constant PUBLIC_RESOLVER_ADDRESS = 0xA2008916Ed2d7ED0Ecd747a8a5309267e42cf1f1;
     address public constant NAME_WRAPPER_ADDRESS = 0xF127De9E039a789806fEd4C6b1C0f3aFfeA9425e;
-    address public constant BASE_REGISTRAR_ADDRESS = 0x83475a84C0ea834F06c8e636A62631e7d2e07A44;
 
     uint256 public pricing = 0.0001 ether;
     string public defaultParent = "repo.enscribe.linea-sepolia.eth";
@@ -78,14 +76,14 @@ contract EnscribeLineaSepolia is IERC1155Receiver, Ownable {
 
         if (checkWrapped(parentNode)) {
             if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
-                require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of parent node, can't create subname");
+                require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of Wrapped parent node, can't create subname");
             }
-            require(_createSubnameWrapped(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role");
+            require(_createSubnameWrapped(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role for Wrapped Name");
         } else {
             if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
-                require(_isSenderOwnerUnwrapped(parentNode, parentName), "Sender is not the owner of parent node, can't create subname");
+                require(_isSenderOwnerUnwrapped(parentNode), "Sender is not the owner of Unwrapped parent node, can't create subname");
             }
-            require(_createSubnameUnwrapped(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role (3LD+) or manager role (2LD+)");
+            require(_createSubnameUnwrapped(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role for Unwrapped Name");
         }
         emit SubnameCreated(parentNode, label);
 
@@ -97,27 +95,6 @@ contract EnscribeLineaSepolia is IERC1155Receiver, Ownable {
         emit EtherReceived(msg.sender, msg.value);
 
         success = true;
-    }
-
-    /**
-     * @dev To withdraw received Ether.
-     */
-    function withdraw() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
-    }
-
-    /**
-     * @dev Fallback function to accept Ether.
-     */
-    receive() external payable {
-        emit EtherReceived(msg.sender, msg.value);
-    }
-
-    /**
-     * @dev Fallback function to accept calls without data.
-     */
-    fallback() external payable {
-        emit EtherReceived(msg.sender, msg.value);
     }
 
     function _deploy(uint256 salt, bytes memory bytecode) private returns (address deployedAddress) {
@@ -203,42 +180,8 @@ contract EnscribeLineaSepolia is IERC1155Receiver, Ownable {
         return NW.NameWrapper(NAME_WRAPPER_ADDRESS).ownerOf(uint256(parentNode)) == msg.sender;
     }
 
-    function _isSenderOwnerUnwrapped(bytes32 parentNode, string calldata parentName) private view returns (bool) {
-        (bool is2LD, bytes32 labelHash) = _is2LDor3LD(parentName);
-        if (is2LD) {
-            return BR.BaseRegistrarImplementation(BASE_REGISTRAR_ADDRESS).ownerOf(uint256(labelHash)) == msg.sender;
-        }
+    function _isSenderOwnerUnwrapped(bytes32 parentNode) private view returns (bool) {
         return ER.ENSRegistry(ENS_REGISTRY_ADDRESS).owner(parentNode) == msg.sender;
-    }
-
-    function _is2LDor3LD(string memory ensName) private pure returns (bool is2LD, bytes32 labelHash) {
-        bytes memory strBytes = bytes(ensName);
-        uint256 dotCount = 0;
-        uint256 firstDotIndex = 0;
-
-        // Scan the string to count dots and locate the first dot
-        for (uint256 i = 0; i < strBytes.length; i++) {
-            if (strBytes[i] == ".") {
-                dotCount++;
-                if (dotCount == 1) {
-                    firstDotIndex = i;
-                }
-                if (dotCount > 1) {
-                    return (false, bytes32(0)); // It's a 3LD+, return false and empty labelHash
-                }
-            }
-        }
-
-        // If there's exactly one dot, it's a 2LD, extract label
-        if (dotCount == 1) {
-            bytes memory labelBytes = new bytes(firstDotIndex);
-            for (uint256 i = 0; i < firstDotIndex; i++) {
-                labelBytes[i] = strBytes[i];
-            }
-            return (true, keccak256(labelBytes)); // Return true + labelHash
-        }
-
-        return (false, bytes32(0));
     }
 
     function updatePricing(uint256 updatedPrice) public onlyOwner {
@@ -248,6 +191,27 @@ contract EnscribeLineaSepolia is IERC1155Receiver, Ownable {
 
     function updateDefaultParent(string calldata updatedParent) public onlyOwner {
         defaultParent = updatedParent;
+    }
+
+    /**
+     * @dev To withdraw received Ether.
+     */
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    /**
+     * @dev Fallback function to accept Ether.
+     */
+    receive() external payable {
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Fallback function to accept calls without data.
+     */
+    fallback() external payable {
+        emit EtherReceived(msg.sender, msg.value);
     }
 
     /**

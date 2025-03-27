@@ -5,23 +5,19 @@ import "../ens/ReverseRegistrar.sol" as RR;
 import "../ens/NameWrapper.sol" as NW;
 import "../ens/ENSRegistry.sol" as ER;
 import "../ens/PublicResolver.sol" as PR;
-import "../ens/BaseRegistrarImplementation.sol" as BR;
 import "../openzeppelin/token/ERC1155/IERC1155Receiver.sol";
 import "../openzeppelin/access/Ownable.sol";
 
-contract EnscribeSepolia is IERC1155Receiver, Ownable {
+contract EnscribeSepolia is Ownable, IERC1155Receiver {
 
     address public constant REVERSE_REGISTRAR_ADDRESS = 0xCF75B92126B02C9811d8c632144288a3eb84afC8;
     address public constant ENS_REGISTRY_ADDRESS = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
     address public constant PUBLIC_RESOLVER_ADDRESS = 0x8948458626811dd0c23EB25Cc74291247077cC51;
     address public constant NAME_WRAPPER_ADDRESS = 0x0635513f179D50A207757E05759CbD106d7dFcE8;
-    address public constant BASE_REGISTRAR_ADDRESS = 0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85;
 
     uint256 public pricing = 0.0001 ether;
     string public defaultParent = "testapp.eth";
 
-    event ContractStarted(string parentName, bytes32 parentNode, uint256 tokenID);
-    event IsWrapped(string msg, uint256 tokenId);
     event ContractDeployed(address contractAddress);
     event SubnameCreated(bytes32 parentHash, string label);
     event SetAddrSuccess(address indexed contractAddress, string subname);
@@ -51,7 +47,6 @@ contract EnscribeSepolia is IERC1155Receiver, Ownable {
 
     // Function to be called when Deploy contract and set primary ENS name
     function setNameAndDeploy(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
-        emit ContractStarted(parentName, parentNode, uint256(parentNode));
         bytes32 labelHash = keccak256(bytes(label));
         string memory subname = string(abi.encodePacked(label, ".", parentName));
         bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
@@ -81,14 +76,14 @@ contract EnscribeSepolia is IERC1155Receiver, Ownable {
 
         if (checkWrapped(parentNode)) {
             if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
-                require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of parent node, can't create subname");
+                require(_isSenderOwnerWrapped(parentNode), "Sender is not the owner of Wrapped parent node, can't create subname");
             }
-            require(_createSubnameWrapped(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role");
+            require(_createSubnameWrapped(parentNode, label, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0), uint32(0), uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role for Wrapped Name");
         } else {
             if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
-                require(_isSenderOwnerUnwrapped(parentNode, parentName), "Sender is not the owner of parent node, can't create subname");
+                require(_isSenderOwnerUnwrapped(parentNode), "Sender is not the owner of Unwrapped parent node, can't create subname");
             }
-            require(_createSubnameUnwrapped(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role (3LD+) or manager role (2LD+)");
+            require(_createSubnameUnwrapped(parentNode, labelHash, address(this), PUBLIC_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role for Unwrapped Name");
         }
         emit SubnameCreated(parentNode, label);
 
@@ -100,27 +95,6 @@ contract EnscribeSepolia is IERC1155Receiver, Ownable {
         emit EtherReceived(msg.sender, msg.value);
 
         success = true;
-    }
-
-    /**
-     * @dev To withdraw received Ether.
-     */
-    function withdraw() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
-    }
-
-    /**
-     * @dev Fallback function to accept Ether.
-     */
-    receive() external payable {
-        emit EtherReceived(msg.sender, msg.value);
-    }
-
-    /**
-     * @dev Fallback function to accept calls without data.
-     */
-    fallback() external payable {
-        emit EtherReceived(msg.sender, msg.value);
     }
 
     function _deploy(uint256 salt, bytes memory bytecode) private returns (address deployedAddress) {
@@ -206,42 +180,8 @@ contract EnscribeSepolia is IERC1155Receiver, Ownable {
         return NW.NameWrapper(NAME_WRAPPER_ADDRESS).ownerOf(uint256(parentNode)) == msg.sender;
     }
 
-    function _isSenderOwnerUnwrapped(bytes32 parentNode, string calldata parentName) private view returns (bool) {
-        (bool is2LD, bytes32 labelHash) = _is2LDor3LD(parentName);
-        if (is2LD) {
-            return BR.BaseRegistrarImplementation(BASE_REGISTRAR_ADDRESS).ownerOf(uint256(labelHash)) == msg.sender;
-        }
+    function _isSenderOwnerUnwrapped(bytes32 parentNode) private view returns (bool) {
         return ER.ENSRegistry(ENS_REGISTRY_ADDRESS).owner(parentNode) == msg.sender;
-    }
-
-    function _is2LDor3LD(string memory ensName) private pure returns (bool is2LD, bytes32 labelHash) {
-        bytes memory strBytes = bytes(ensName);
-        uint256 dotCount = 0;
-        uint256 firstDotIndex = 0;
-
-        // Scan the string to count dots and locate the first dot
-        for (uint256 i = 0; i < strBytes.length; i++) {
-            if (strBytes[i] == ".") {
-                dotCount++;
-                if (dotCount == 1) {
-                    firstDotIndex = i;
-                }
-                if (dotCount > 1) {
-                    return (false, bytes32(0)); // It's a 3LD+, return false and empty labelHash
-                }
-            }
-        }
-
-        // If there's exactly one dot, it's a 2LD, extract label
-        if (dotCount == 1) {
-            bytes memory labelBytes = new bytes(firstDotIndex);
-            for (uint256 i = 0; i < firstDotIndex; i++) {
-                labelBytes[i] = strBytes[i];
-            }
-            return (true, keccak256(labelBytes)); // Return true + labelHash
-        }
-
-        return (false, bytes32(0));
     }
 
     function updatePricing(uint256 updatedPrice) public onlyOwner {
@@ -251,6 +191,27 @@ contract EnscribeSepolia is IERC1155Receiver, Ownable {
 
     function updateDefaultParent(string calldata updatedParent) public onlyOwner {
         defaultParent = updatedParent;
+    }
+
+    /**
+     * @dev To withdraw received Ether.
+     */
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    /**
+     * @dev Fallback function to accept Ether.
+     */
+    receive() external payable {
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Fallback function to accept calls without data.
+     */
+    fallback() external payable {
+        emit EtherReceived(msg.sender, msg.value);
     }
 
     /**

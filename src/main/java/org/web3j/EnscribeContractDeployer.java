@@ -1,7 +1,9 @@
 package org.web3j;
 
 import org.web3j.crypto.Credentials;
+import org.web3j.generated.contracts.EnscribeBase;
 import org.web3j.generated.contracts.EnscribeLineaSepolia;
+import org.web3j.generated.contracts.EnscribeSepolia;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.http.HttpService;
@@ -43,8 +45,8 @@ public class EnscribeContractDeployer {
                         .getBlock()
                         .getBaseFeePerGas();
         BigInteger maxFeePerGas = baseFee.multiply(BigInteger.valueOf(2)).add(maxPriorityFeePerGas);
-       EnscribeLineaSepolia enscribeLineaSepolia = EnscribeLineaSepolia.deploy(web3j, credentials, new StaticEIP1559GasProvider(59141L, maxFeePerGas, maxPriorityFeePerGas, gasLimit)).send();
-       System.out.println("Contract address: " + enscribeLineaSepolia.getContractAddress());
+       EnscribeBase enscribe = EnscribeBase.deploy(web3j, credentials, new StaticEIP1559GasProvider(84532L, maxFeePerGas, maxPriorityFeePerGas, gasLimit)).send();
+       System.out.println("Contract address: " + enscribe.getContractAddress());
    }
 
    static String getEnvVariable(String key)  {
