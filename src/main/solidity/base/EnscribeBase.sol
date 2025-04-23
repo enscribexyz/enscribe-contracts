@@ -1,19 +1,32 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.24;
+pragma solidity = 0.8.24;
 
-import "./ReverseRegistrar.sol" as RR;
-import "./Registry.sol" as ER;
-import "./L2Resolver.sol" as L2R;
-import "../openzeppelin/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+interface IENSRegistry {
+    function owner(bytes32 node) external view returns (address);
+    function resolver(bytes32 node) external view returns (address);
+    function setSubnodeRecord(bytes32 node, bytes32 label, address owner, address resolver, uint64 ttl) external;
+    function setOwner(bytes32 node, address owner) external;
+}
+
+interface IReverseRegistrar {
+    function setNameForAddr(address addr, address owner, address resolver, string calldata name) external;
+    function node(address addr) external view returns (bytes32);
+}
+
+interface IPublicResolver {
+    function setAddr(bytes32 node, uint256 coinType, bytes calldata a) external;
+    function setAddr(bytes32 node, address a) external;
+    function setName(bytes32 node, string calldata newName) external;
+}
 
 contract EnscribeBase is Ownable {
+    IReverseRegistrar public reverseRegistrar;
+    IENSRegistry public ensRegistry;
 
-    address public constant REVERSE_REGISTRAR_ADDRESS = 0xa0A8401ECF248a9375a0a71C4dedc263dA18dCd7;
-    address public constant ENS_REGISTRY_ADDRESS = 0x1493b2567056c2181630115660963E13A8E32735;
-    address public constant L2_RESOLVER_ADDRESS = 0x6533C94869D28fAA8dF77cc63f9e2b2D6Cf77eBA;
-
-    uint256 public pricing = 0.0001 ether;
-    string public defaultParent = "test.enscribe.basetest.eth";
+    uint256 public pricing;
+    string public defaultParent;
 
     event ContractDeployed(address contractAddress);
     event SubnameCreated(bytes32 parentHash, string label);
@@ -23,150 +36,256 @@ contract EnscribeBase is Ownable {
     event EtherReceived(address sender, uint256 amount);
 
     /**
-     * @notice Compute the address of a contract deployed via CREATE2
-     * @param salt A user-defined value to influence the deterministic address
-     * @param bytecode The bytecode of the contract to deploy
-     * @return computedAddress The deterministic address of the contract
+     * @dev Constructor initializes ENS-related contracts and default settings.
      */
-    function computeAddress(uint256 salt, bytes memory bytecode) public view returns (address computedAddress) {
-        bytes32 bytecodeHash = keccak256(bytecode);
-        bytes32 saltEncoded = keccak256(abi.encodePacked(salt));
-        computedAddress = address(
-            uint160(uint256(keccak256(abi.encodePacked(
-                bytes1(0xff),
-                address(this),
-                saltEncoded,
-                bytecodeHash
-            ))))
-        );
+    constructor(
+        address _reverseRegistrar,
+        address _ensRegistry,
+        string memory _defaultParent,
+        uint256 _pricing
+    ) Ownable(msg.sender) {
+        reverseRegistrar = IReverseRegistrar(_reverseRegistrar);
+        ensRegistry = IENSRegistry(_ensRegistry);
+        defaultParent = _defaultParent;
+        pricing = _pricing;
     }
 
-    // Function to be called when Deploy contract and set primary ENS name
-    function setNameAndDeploy(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
-        bytes32 labelHash = keccak256(bytes(label));
-        string memory subname = string(abi.encodePacked(label, ".", parentName));
-        bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
-        uint256 salt = uint256(node);
-        deployedAddress = computeAddress(salt, bytecode);
+    // ------------------ Admin Setters ------------------
 
-        _deploy(salt, bytecode);
+    function setReverseRegistrar(address _addr) external onlyOwner {
+        reverseRegistrar = IReverseRegistrar(_addr);
+    }
+
+    function setENSRegistry(address _addr) external onlyOwner {
+        ensRegistry = IENSRegistry(_addr);
+    }
+
+    function updatePricing(uint256 newPrice) external onlyOwner {
+        require(newPrice > 0, "Price must be > 0");
+        pricing = newPrice;
+    }
+
+    function updateDefaultParent(string calldata newParent) external onlyOwner {
+        defaultParent = newParent;
+    }
+
+    function withdraw() external onlyOwner {
+        (bool success, ) = owner().call{value: address(this).balance}("");
+        require(success, "Withdraw failed");
+    }
+
+    // ------------------ Core Logic ------------------
+
+    /**
+     * @dev Computes CREATE2 deterministic address.
+     */
+    function computeAddress(uint256 salt, bytes memory bytecode) public view returns (address) {
+        bytes32 bytecodeHash = keccak256(bytecode);
+        bytes32 saltHash = keccak256(abi.encodePacked(salt));
+        return address(uint160(uint256(keccak256(abi.encodePacked(
+            bytes1(0xff), address(this), saltHash, bytecodeHash
+        )))));
+    }
+
+    /**
+     * @dev Deploys a contract, create subname and set ENS as primary name.
+     */
+    function setNameAndDeploy(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
+        require(msg.value >= pricing, "Insufficient ETH");
+
+        bytes32 labelHash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
+        string memory subname = string(abi.encodePacked(label, ".", parentName));
+        deployedAddress = computeAddress(uint256(node), bytecode);
+
+        _deploy(uint256(node), bytecode);
 
         require(setName(deployedAddress, label, parentName, parentNode), "Failed to create subname and set forward resolution");
 
-        require(_setPrimaryNameForContract(deployedAddress, address(this), L2_RESOLVER_ADDRESS, subname), "failed to set primary name");
+        require(_setPrimaryName(deployedAddress, subname, address(getResolver(node))), "Failed to set primary name");
         emit SetPrimaryNameSuccess(deployedAddress, subname);
 
         _transferContractOwnership(deployedAddress, msg.sender);
         emit ContractOwnershipTransferred(deployedAddress, msg.sender);
 
-        require(msg.value >= pricing, "Insufficient Ether Sent: Check the pricing");
         emit EtherReceived(msg.sender, msg.value);
     }
 
-    // Function to be called when contract is already deployed and just set forward resolve ENS name
+    /**
+     * @dev Sets the ENS subname and forward resolution for a deployed contract.
+     */
     function setName(address contractAddress, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (bool success) {
+        require(msg.value >= pricing, "Insufficient ETH");
+
         bytes32 labelHash = keccak256(bytes(label));
         bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
         string memory subname = string(abi.encodePacked(label, ".", parentName));
-        success = false;
-        if (keccak256(abi.encodePacked(parentName)) != keccak256(abi.encodePacked(defaultParent))) {
-            require(_isSenderOwnerUnwrapped(parentNode), "Sender is not the owner of Unwrapped parent node, can't create subname");
-        }
-        require(_createSubnameUnwrapped(parentNode, labelHash, address(this), L2_RESOLVER_ADDRESS, uint64(0)), "Failed to create subname, check if contract is given isApprovedForAll role for Unwrapped Name");
+
+        require(_isDefaultParent(parentName) || _isSenderOwner(parentNode), "Sender is not the owner of parent node");
+        require(_createSubname(parentNode, labelHash), "Subname creation failed");
         emit SubnameCreated(parentNode, label);
 
-        require(_setAddr(node, contractAddress), "failed to setAddr");
+        require(_setAddr(node, 60, abi.encodePacked(contractAddress)), "setAddr, forward resolution failed");
         emit SetAddrSuccess(contractAddress, subname);
 
-        require(msg.value >= pricing, "Insufficient Ether Sent: Check the pricing");
         emit EtherReceived(msg.sender, msg.value);
-
-        success = true;
+        return true;
     }
 
-    function _deploy(uint256 salt, bytes memory bytecode) private returns (address deployedAddress) {
-        require(bytecode.length != 0, "Bytecode cannot be empty");
-        bytes32 saltEncoded = keccak256(abi.encodePacked(salt));
+    /**
+     * @dev Deploys contract and sets primary name using node. Doesn't create new subname
+     */
+    function setNameAndDeployWithoutLabel(bytes memory bytecode, string calldata ensName, bytes32 node) public payable returns (address deployedAddress) {
+        require(msg.value >= pricing, "Insufficient ETH");
+
+        deployedAddress = computeAddress(uint256(node), bytecode);
+        _deploy(uint256(node), bytecode);
+
+        require(_isSenderOwner(node), "Sender is not the owner of node");
+
+        require(_setAddr(node, 60, abi.encodePacked(deployedAddress)), "setAddr, forward resolution failed");
+        emit SetAddrSuccess(deployedAddress, ensName);
+
+        require(_setPrimaryName(deployedAddress, ensName, address(getResolver(node))), "Failed to set primary name");
+        emit SetPrimaryNameSuccess(deployedAddress, ensName);
+
+        _transferContractOwnership(deployedAddress, msg.sender);
+        emit ContractOwnershipTransferred(deployedAddress, msg.sender);
+
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Deploys contract and sets primary name using reverse node. For contracts extending ReverseClaimable
+     */
+    function setNameAndDeployReverseClaimer(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
+        require(msg.value >= pricing, "Insufficient ETH");
+
+        bytes32 labelHash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
+        string memory subname = string(abi.encodePacked(label, ".", parentName));
+
+        deployedAddress = computeAddress(uint256(node), bytecode);
+        _deploy(uint256(node), bytecode);
+
+        require(_isDefaultParent(parentName) || _isSenderOwner(parentNode), "Sender is not the owner of parent node");
+        require(_createSubname(parentNode, labelHash), "Subname creation failed");
+        emit SubnameCreated(parentNode, label);
+
+        bytes32 reverseNode = reverseRegistrar.node(deployedAddress);
+        getResolver(reverseNode).setName(reverseNode, subname);
+        emit SetPrimaryNameSuccess(deployedAddress, subname);
+
+        require(_setAddr(node, 60, abi.encodePacked(deployedAddress)), "setAddr, forward resolution failed");
+        emit SetAddrSuccess(deployedAddress, subname);
+
+        ensRegistry.setOwner(reverseNode, msg.sender);
+        emit ContractOwnershipTransferred(deployedAddress, msg.sender);
+
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    /**
+    * @dev Deploys contract and sets primary name during deployment. For contracts extending ReverseSetter
+     */
+    function setNameAndDeployReverseSetter(bytes memory bytecode, string calldata label, string calldata parentName, bytes32 parentNode) public payable returns (address deployedAddress) {
+        require(msg.value >= pricing, "Insufficient ETH");
+
+        bytes32 labelHash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, labelHash));
+        string memory subname = string(abi.encodePacked(label, ".", parentName));
+
+        require(_isDefaultParent(parentName) || _isSenderOwner(parentNode), "Sender is not the owner of parent node");
+        require(_createSubname(parentNode, labelHash), "Subname creation failed");
+        emit SubnameCreated(parentNode, label);
+
+        deployedAddress = computeAddress(uint256(node), bytecode);
+        _deploy(uint256(node), bytecode);
+
+        require(_setAddr(node, 60, abi.encodePacked(deployedAddress)), "setAddr, forward resolution failed");
+        emit SetAddrSuccess(deployedAddress, subname);
+
+        emit EtherReceived(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Internal: Deploy contract with CREATE2.
+     */
+    function _deploy(uint256 salt, bytes memory bytecode) private returns (address deployed) {
+        require(bytecode.length > 0, "Empty bytecode");
+        bytes32 saltHash = keccak256(abi.encodePacked(salt));
         assembly {
-            deployedAddress := create2(0, add(bytecode, 0x20), mload(bytecode), saltEncoded)
+            deployed := create2(0, add(bytecode, 0x20), mload(bytecode), saltHash)
         }
-
-        require(deployedAddress != address(0), "Contract deployment failed");
-        emit ContractDeployed(deployedAddress);
+        require(deployed != address(0), "Deployment failed");
+        emit ContractDeployed(deployed);
     }
 
-    function _transferContractOwnership(address contractAddress, address owner) private {
-        (bool success, ) = contractAddress.call(
-            abi.encodeWithSignature("transferOwnership(address)", owner)
-        );
+    /**
+     * @dev Internal: Transfers ownership of deployed contract using `transferOwnership`.
+     */
+    function _transferContractOwnership(address contractAddress, address newOwner) private {
+        (bool success, ) = contractAddress.call(abi.encodeWithSignature("transferOwnership(address)", newOwner));
         require(success, "Ownership transfer failed");
     }
 
-    function _setPrimaryNameForContract(address contractAddr, address owner, address resolver, string memory subName) private returns (bool success) {
-        RR.ReverseRegistrar reverseRegistrar = RR.ReverseRegistrar(REVERSE_REGISTRAR_ADDRESS);
-        try reverseRegistrar.setNameForAddr(contractAddr, owner, resolver, subName) {
-            success = true;
+    /**
+     * @dev Internal: Set reverse record for deployed contract.
+     */
+    function _setPrimaryName(address addr, string memory name, address resolver) private returns (bool) {
+        try reverseRegistrar.setNameForAddr(addr, address(this), resolver, name) {
+            return true;
         } catch {
-            success = false;
+            return false;
         }
-    }
-
-    function _createSubnameUnwrapped(
-        bytes32 parentNode,
-        bytes32 labelHash,
-        address owner,
-        address resolver,
-        uint64 ttl
-    ) private returns (bool success) {
-        ER.Registry ensRegistry = ER.Registry(ENS_REGISTRY_ADDRESS);
-        try ensRegistry.setSubnodeRecord(parentNode, labelHash, owner, resolver, ttl) {
-            success = true;
-        } catch {
-            success = false;
-        }
-    }
-
-    function _setAddr(
-        bytes32 node, address a
-    ) private returns (bool success) {
-        L2R.L2Resolver l2ResolverContract = L2R.L2Resolver(L2_RESOLVER_ADDRESS);
-        try l2ResolverContract.setAddr(node, a) {
-            success = true;
-        } catch {
-            success=false;
-        }
-    }
-
-    function _isSenderOwnerUnwrapped(bytes32 parentNode) private view returns (bool) {
-        return ER.Registry(ENS_REGISTRY_ADDRESS).owner(parentNode) == msg.sender;
-    }
-
-    function updatePricing(uint256 updatedPrice) public onlyOwner {
-        require(updatedPrice > 0, "Price must be greater than zero");
-        pricing = updatedPrice;
-    }
-
-    function updateDefaultParent(string calldata updatedParent) public onlyOwner {
-        defaultParent = updatedParent;
     }
 
     /**
-     * @dev To withdraw received Ether.
+     * @dev Internal: Creates ENS subname under given parent.
      */
-    function withdraw() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
+    function _createSubname(bytes32 parentNode, bytes32 labelHash) private returns (bool) {
+        ensRegistry.setSubnodeRecord(parentNode, labelHash, address(this), address(getResolver(parentNode)), 0);
+        return true;
     }
 
     /**
-     * @dev Fallback function to accept Ether.
+     * @dev Internal: Sets address record, forward resolution.
      */
+    function _setAddr(bytes32 node, uint256 coinType, bytes memory addrBytes) private returns (bool) {
+        try getResolver(node).setAddr(node, coinType, addrBytes) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * @dev Internal: Verifies if the caller is owner of the given node.
+     */
+    function _isSenderOwner(bytes32 node) private view returns (bool) {
+        return ensRegistry.owner(node) == msg.sender;
+    }
+
+    /**
+     * @dev Checks if the given parentName equals defaultParent.
+     */
+    function _isDefaultParent(string calldata parent) private view returns (bool) {
+        return keccak256(bytes(parent)) == keccak256(bytes(defaultParent));
+    }
+
+    /**
+     * @dev Returns the Resolver address for given ENS node
+     */
+    function getResolver(bytes32 node) internal view returns (IPublicResolver)  {
+        return IPublicResolver(ensRegistry.resolver(node));
+    }
+
+    // ------------------ Fallback ------------------
+
     receive() external payable {
         emit EtherReceived(msg.sender, msg.value);
     }
 
-    /**
-     * @dev Fallback function to accept calls without data.
-     */
     fallback() external payable {
         emit EtherReceived(msg.sender, msg.value);
     }
