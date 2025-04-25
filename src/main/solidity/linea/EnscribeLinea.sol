@@ -36,7 +36,7 @@ interface IERC1155Receiver is IERC165 {
     function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata) external returns (bytes4);
 }
 
-contract Enscribe is Ownable, IERC1155Receiver {
+contract EnscribeLinea is Ownable, IERC1155Receiver {
     IReverseRegistrar public reverseRegistrar;
     IENSRegistry public ensRegistry;
     INameWrapper public nameWrapper;
